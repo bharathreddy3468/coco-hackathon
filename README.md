@@ -299,23 +299,24 @@ This system is built for **decision support**, not autonomous decision-making.
 ├── backend/                  # FastAPI Application (Python >= 3.11 with uv)
 │   ├── app/
 │   │   ├── api/             # API Router & Versioned Endpoints (v1)
-│   │   │   └── v1/endpoints/ # health, claims, skills endpoints
-│   │   ├── config/          # Environment Settings & Structured JSON Logging
-│   │   ├── database/        # Async SQLAlchemy engine & session factory
-│   │   ├── models/          # SQLAlchemy ORM Models (Claim, AuditLog)
+│   │   │   └── v1/endpoints/# health, claims, skills endpoints
+│   │   ├── config/          # Environment Settings, PII Field Config (pii_config.py) & Logging
+│   │   ├── database/        # Snowflake connection layer (session.py, claim_repository.py, snowflake_init.py)
+│   │   ├── models/          # Claim, AuditLog, and WorkflowEvent Pydantic Data Models
 │   │   ├── schemas/         # Pydantic Input/Output Schemas
-│   │   ├── services/        # Business Logic & Orchestration
-│   │   ├── skills/          # Extensible AI Skills Framework
+│   │   ├── services/        # Business Logic, Cortex Service & PII Masking Service (pii_masking_service.py)
+│   │   ├── skills/          # Extensible AI Skills Framework (Cortex LLM & Fallback Generators)
 │   │   ├── utils/           # Structured Logger & Utilities
-│   │   ├── workflow/        # Multi-stage Claims Decision Engine Pipeline
-│   │   └── main.py          # FastAPI Server Entrypoint & Middleware
-│   ├── database/             # Snowflake schema.sql, seed.sql, init_db.py
+│   │   ├── workflow/        # State-driven Workflow Engine & State Machine
+│   │   └── main.py          # FastAPI Server Entrypoint & Lifespan Middleware
+│   ├── database/            # Snowflake DDL (schema.sql), demo data (seed.sql), & CLI initializer (init_db.py)
+│   ├── tests/               # Unit & integration test suite (test_pii_masking.py, test_document_extractor.py)
 │   ├── .env.example          # Backend environment variables reference
 │   ├── Dockerfile            # Multi-stage Python uv Docker image
 │   └── pyproject.toml        # Dependencies & uv environment settings
 ├── frontend/                  # React 18 + Vite + TypeScript Frontend
 │   ├── src/
-│   │   ├── components/       # UI components (Navbar, Metrics, ClaimCard, SkillExecutor, etc.)
+│   │   ├── components/       # UI components (Navbar, AdjusterDashboard, ClaimDetailModal, SkillExecutor, etc.)
 │   │   ├── services/         # Typed API client for FastAPI backend
 │   │   ├── types/            # TypeScript interfaces matching backend models
 │   │   ├── index.css         # Dark Mode Glassmorphism Design System
