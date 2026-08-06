@@ -1,5 +1,6 @@
 from app.skills.base import BaseSkill
 from app.skills.document_intake import DocumentIntakeSkill
+from app.skills.claim_extractor import ClaimExtractorSkill
 from app.skills.privacy_guard import PrivacyGuardSkill
 from app.skills.fraud_detector import FraudDetectorSkill
 from app.skills.claim_analysis import ClaimAnalysisSkill
@@ -9,6 +10,7 @@ from app.workflow.state_machine import ClaimState
 
 skills_registry: dict[str, BaseSkill] = {
     "skill_document_intake": DocumentIntakeSkill(),
+    "skill_claim_parser": ClaimExtractorSkill(),
     "skill_privacy_guard": PrivacyGuardSkill(),
     "skill_fraud_detector": FraudDetectorSkill(),
     "skill_claim_analysis": ClaimAnalysisSkill(),
@@ -29,6 +31,7 @@ STATE_SKILL_MAPPING = {
 __all__ = [
     "BaseSkill",
     "DocumentIntakeSkill",
+    "ClaimExtractorSkill",
     "PrivacyGuardSkill",
     "FraudDetectorSkill",
     "ClaimAnalysisSkill",

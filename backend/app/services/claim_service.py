@@ -66,8 +66,10 @@ class ClaimService:
             raise ValueError(f"Claim with ID '{claim_id}' not found.")
 
         if action.fraud_confirmed:
+            # Fraud confirmed -> transition to CUSTOMER_COMMUNICATION for rejection notice
+            logger.info(f"[claim={claim_id}] Human fraud review: FRAUD CONFIRMED -> CUSTOMER_COMMUNICATION")
             await claim_repository.update_claim(claim.id, {
-                "status": ClaimState.REJECTED,
+                "status": ClaimState.CUSTOMER_COMMUNICATION,
                 "copilot_recommendation": "REJECT",
                 "adjuster_notes": f"[SIU FRAUD CONFIRMED]: {action.investigator_notes}",
             })
@@ -75,10 +77,14 @@ class ClaimService:
                 claim_id=claim.id,
                 action="FRAUD_INVESTIGATION_CONFIRMED",
                 performed_by="SIU_INVESTIGATOR",
-                details={"notes": action.investigator_notes, "final_status": "REJECTED"},
+                details={"notes": action.investigator_notes, "decision": "FRAUD_CONFIRMED"},
             )
             await claim_repository.create_audit_log(audit)
+            # Advance workflow to run CUSTOMER_COMMUNICATION -> COMPLETED
+            await workflow_engine.advance_claim_workflow(claim.id)
         else:
+            # Fraud cleared -> transition to CLAIM_ANALYSIS
+            logger.info(f"[claim={claim_id}] Human fraud review: FRAUD CLEARED -> CLAIM_ANALYSIS")
             await claim_repository.update_claim(claim.id, {
                 "status": ClaimState.CLAIM_ANALYSIS,
                 "adjuster_notes": f"[SIU FRAUD CLEARED]: {action.investigator_notes}",
@@ -87,9 +93,10 @@ class ClaimService:
                 claim_id=claim.id,
                 action="FRAUD_INVESTIGATION_CLEARED",
                 performed_by="SIU_INVESTIGATOR",
-                details={"notes": action.investigator_notes, "next_status": "CLAIM_ANALYSIS"},
+                details={"notes": action.investigator_notes, "decision": "FRAUD_CLEARED"},
             )
             await claim_repository.create_audit_log(audit)
+            # Advance workflow from CLAIM_ANALYSIS onward
             await workflow_engine.advance_claim_workflow(claim.id)
 
         return await claim_repository.get_claim(claim_id)
@@ -106,9 +113,11 @@ class ClaimService:
             fields["adjuster_notes"] = update_data.adjuster_notes
 
         if update_data.status == "REJECTED":
+            logger.info(f"[claim={claim_id}] Human adjuster review: REJECTED")
             fields["status"] = ClaimState.REJECTED
             fields["copilot_recommendation"] = "REJECT"
         else:
+            logger.info(f"[claim={claim_id}] Human adjuster review: {update_data.status or 'APPROVED'} -> SEMANTIC_BRIDGE")
             fields["status"] = ClaimState.SEMANTIC_BRIDGE
             fields["copilot_recommendation"] = "AUTO_APPROVE" if update_data.status == "APPROVED" else "MANUAL_REVIEW"
 
@@ -127,6 +136,7 @@ class ClaimService:
         await claim_repository.create_audit_log(audit)
 
         if fields.get("status") == ClaimState.SEMANTIC_BRIDGE:
+            # Continue workflow: SEMANTIC_BRIDGE -> CUSTOMER_COMMUNICATION -> COMPLETED
             await workflow_engine.advance_claim_workflow(claim.id)
 
         return await claim_repository.get_claim(claim_id)

@@ -47,3 +47,15 @@ class AuditLogModel(BaseModel):
     performed_by: str = "SYSTEM_COPILOT"
     details: Dict[str, Any] = Field(default_factory=dict)
     timestamp: datetime = Field(default_factory=_utc_now)
+
+
+class WorkflowEventModel(BaseModel):
+    event_id: str = Field(default_factory=_new_id)
+    claim_id: str
+    event_type: str = "STATE_TRANSITION"
+    from_state: Optional[str] = None
+    to_state: Optional[str] = None
+    actor: str = "SYSTEM"
+    timestamp: datetime = Field(default_factory=_utc_now)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+

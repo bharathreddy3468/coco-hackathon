@@ -5,7 +5,8 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from app.database.session import execute_query, fetch_all, fetch_one
-from app.models.claim import AuditLogModel, ClaimModel
+from app.models.claim import AuditLogModel, ClaimModel, WorkflowEventModel
+
 
 # JSON/VARIANT columns that need serialization
 _JSON_COLUMNS = [
@@ -48,22 +49,23 @@ def _row_to_claim(row: Dict[str, Any]) -> ClaimModel:
     return ClaimModel(**data)
 
 
-def _row_to_audit_log(row: Dict[str, Any]) -> AuditLogModel:
-    """Map a Snowflake row dict to an AuditLogModel."""
+def _row_to_workflow_event(row: Dict[str, Any]) -> WorkflowEventModel:
+    """Map a Snowflake row dict to a WorkflowEventModel."""
     data = {}
     for key, value in row.items():
         lower_key = key.lower()
-        if lower_key == "details":
+        if lower_key == "metadata":
             data[lower_key] = _deserialize_json(value)
         elif lower_key == "timestamp" and isinstance(value, str):
             data[lower_key] = datetime.fromisoformat(value)
         else:
             data[lower_key] = value
-    return AuditLogModel(**data)
+    return WorkflowEventModel(**data)
+
 
 
 class ClaimRepository:
-    """Async data access layer for CLAIMS and AUDIT_LOGS tables."""
+    """Async data access layer for CLAIMS, CLAIM_WORKFLOW, and WORKFLOW_EVENTS tables."""
 
     async def create_claim(self, model: ClaimModel) -> ClaimModel:
         sql = """
@@ -140,22 +142,39 @@ class ClaimRepository:
         await execute_query(sql, tuple(params))
         return await self.get_claim(claim_id)
 
-    async def create_audit_log(self, model: AuditLogModel) -> AuditLogModel:
+    async def create_workflow_event(self, event: WorkflowEventModel) -> WorkflowEventModel:
+        """Insert an event into WORKFLOW_EVENTS table."""
         sql = """
-        INSERT INTO AUDIT_LOGS (id, claim_id, action, performed_by, details, timestamp)
-        SELECT %s, %s, %s, %s, PARSE_JSON(%s), %s
+        INSERT INTO WORKFLOW_EVENTS (event_id, claim_id, event_type, from_state, to_state, actor, timestamp, metadata)
+        SELECT %s, %s, %s, %s, %s, %s, %s, PARSE_JSON(%s)
         """
         params = (
-            model.id,
-            model.claim_id,
-            model.action,
-            model.performed_by,
-            _serialize_json(model.details),
-            model.timestamp.isoformat(),
+            event.event_id,
+            event.claim_id,
+            event.event_type,
+            event.from_state,
+            event.to_state,
+            event.actor,
+            event.timestamp.isoformat(),
+            _serialize_json(event.metadata),
         )
         await execute_query(sql, params)
+        return event
+
+    async def create_audit_log(self, model: AuditLogModel) -> AuditLogModel:
+        """Backward-compatible audit log recorder, maps directly into WORKFLOW_EVENTS table."""
+        event = WorkflowEventModel(
+            event_id=model.id,
+            claim_id=model.claim_id,
+            event_type=model.action,
+            actor=model.performed_by,
+            timestamp=model.timestamp,
+            metadata=model.details,
+        )
+        await self.create_workflow_event(event)
         return model
 
 
 # Singleton instance
 claim_repository = ClaimRepository()
+

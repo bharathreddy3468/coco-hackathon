@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     LLM_PROVIDER_MOCK: bool = True
     AUTO_APPROVAL_THRESHOLD: float = 0.85
     FRAUD_RISK_ALERT_THRESHOLD: float = 0.70
+    CORTEX_MODEL_NAME: str = "mistral-7b"
 
     # Local Document Extraction & OCR Settings
     OCR_USE_GPU: bool = False

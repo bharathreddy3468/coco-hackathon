@@ -20,8 +20,10 @@ async def lifespan(app: FastAPI):
     """
     logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION} (Env: {settings.ENV})")
     # Initialize DB tables
-    await init_snowflake_tables()
-    logger.info("Snowflake tables initialized successfully.")
+    try:
+        await init_snowflake_tables()
+    except Exception as e:
+        logger.warning(f"Snowflake table initialization skipped: {e}")
     yield
     logger.info("Shutting down application server.")
 
