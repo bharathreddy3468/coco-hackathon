@@ -8,7 +8,7 @@ export default defineConfig({
     host: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'https://coco-hackathon-1.onrender.com',
         changeOrigin: true,
         secure: false,
       },
