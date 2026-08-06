@@ -301,8 +301,9 @@ class WorkflowEngine:
         claim.ai_analysis_result = ai_res
 
         await self._record_audit(claim.id, "SKILL_CUSTOMER_COMMUNICATION", res.model_dump())
-        logger.info(f"[claim={claim.id}] CUSTOMER_COMMUNICATION dispatched -> COMPLETED")
-        return ClaimState.COMPLETED
+        final_state = ClaimState.REJECTED if claim.copilot_recommendation == "REJECT" else ClaimState.COMPLETED
+        logger.info(f"[claim={claim.id}] CUSTOMER_COMMUNICATION dispatched -> {final_state}")
+        return final_state
 
     async def _record_audit(self, claim_id: str, action: str, details: Dict[str, Any]) -> None:
         audit_entry = AuditLogModel(

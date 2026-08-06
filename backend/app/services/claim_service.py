@@ -66,10 +66,12 @@ class ClaimService:
             raise ValueError(f"Claim with ID '{claim_id}' not found.")
 
         if action.fraud_confirmed:
-            # Fraud confirmed -> transition to CUSTOMER_COMMUNICATION for rejection notice
-            logger.info(f"[claim={claim_id}] Human fraud review: FRAUD CONFIRMED -> CUSTOMER_COMMUNICATION")
+            # Fraud confirmed -> run through SEMANTIC_BRIDGE so the customer gets a
+            # real explanation (combining the SIU finding) instead of a bare rejection.
+            logger.info(f"[claim={claim_id}] Human fraud review: FRAUD CONFIRMED -> SEMANTIC_BRIDGE")
             await claim_repository.update_claim(claim.id, {
-                "status": ClaimState.CUSTOMER_COMMUNICATION,
+                "status": ClaimState.SEMANTIC_BRIDGE,
+                "approved_amount": 0.0,
                 "copilot_recommendation": "REJECT",
                 "adjuster_notes": f"[SIU FRAUD CONFIRMED]: {action.investigator_notes}",
             })
@@ -80,8 +82,8 @@ class ClaimService:
                 details={"notes": action.investigator_notes, "decision": "FRAUD_CONFIRMED"},
             )
             await claim_repository.create_audit_log(audit)
-            # Advance workflow to run CUSTOMER_COMMUNICATION -> COMPLETED
-            await workflow_engine.advance_claim_workflow(claim.id)
+            # SEMANTIC_BRIDGE -> CUSTOMER_COMMUNICATION -> REJECTED runs in the background
+            # (see run_workflow_background)
         else:
             # Fraud cleared -> transition to CLAIM_ANALYSIS
             logger.info(f"[claim={claim_id}] Human fraud review: FRAUD CLEARED -> CLAIM_ANALYSIS")
@@ -96,8 +98,7 @@ class ClaimService:
                 details={"notes": action.investigator_notes, "decision": "FRAUD_CLEARED"},
             )
             await claim_repository.create_audit_log(audit)
-            # Advance workflow from CLAIM_ANALYSIS onward
-            await workflow_engine.advance_claim_workflow(claim.id)
+            # CLAIM_ANALYSIS onward runs in the background (see run_workflow_background)
 
         return await claim_repository.get_claim(claim_id)
 
@@ -113,8 +114,12 @@ class ClaimService:
             fields["adjuster_notes"] = update_data.adjuster_notes
 
         if update_data.status == "REJECTED":
-            logger.info(f"[claim={claim_id}] Human adjuster review: REJECTED")
-            fields["status"] = ClaimState.REJECTED
+            # Still route through SEMANTIC_BRIDGE so the customer gets a real explanation
+            # (combining the AI claim analysis + the adjuster's reasoning) instead of a bare
+            # status flip. The workflow engine resolves this to a final REJECTED status.
+            logger.info(f"[claim={claim_id}] Human adjuster review: REJECTED -> SEMANTIC_BRIDGE")
+            fields["approved_amount"] = 0.0
+            fields["status"] = ClaimState.SEMANTIC_BRIDGE
             fields["copilot_recommendation"] = "REJECT"
         else:
             logger.info(f"[claim={claim_id}] Human adjuster review: {update_data.status or 'APPROVED'} -> SEMANTIC_BRIDGE")
@@ -135,9 +140,8 @@ class ClaimService:
         )
         await claim_repository.create_audit_log(audit)
 
-        if fields.get("status") == ClaimState.SEMANTIC_BRIDGE:
-            # Continue workflow: SEMANTIC_BRIDGE -> CUSTOMER_COMMUNICATION -> COMPLETED
-            await workflow_engine.advance_claim_workflow(claim.id)
+        # SEMANTIC_BRIDGE -> CUSTOMER_COMMUNICATION -> COMPLETED runs in the background
+        # (see run_workflow_background) so the adjuster's PATCH request returns instantly.
 
         return await claim_repository.get_claim(claim_id)
 

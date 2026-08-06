@@ -56,6 +56,10 @@ export const Navbar: React.FC<NavbarProps> = ({ readiness, activeTab, setActiveT
             <Activity style={{ width: '14px', height: '14px', color: 'var(--accent-cyan)' }} />
             <span>Skills: <strong style={{ color: '#fff' }}>{readiness.skills_loaded} Active</strong></span>
             <span style={{ color: 'var(--text-dim)' }}>|</span>
+            <span style={{ color: '#818cf8', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+              <Shield style={{ width: '12px', height: '12px' }} /> PII Guard Active
+            </span>
+            <span style={{ color: 'var(--text-dim)' }}>|</span>
             {readiness.database_connected ? (
               <span style={{ color: '#34d399', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                 <CheckCircle style={{ width: '12px', height: '12px' }} /> DB Ready

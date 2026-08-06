@@ -12,10 +12,9 @@ interface CustomerPortalProps {
     incident_description: string;
     documents: ClaimDocument[];
   }) => Promise<void>;
-  onSelectClaim: (claim: Claim) => void;
 }
 
-export const CustomerPortal: React.FC<CustomerPortalProps> = ({ claims, onSubmitClaim, onSelectClaim }) => {
+export const CustomerPortal: React.FC<CustomerPortalProps> = ({ claims, onSubmitClaim }) => {
   const [policyNumber, setPolicyNumber] = useState('POL-2026-4491');
   const [claimantName, setClaimantName] = useState('Sarah Jenkins');
   const [claimType, setClaimType] = useState('Auto');
@@ -65,19 +64,12 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({ claims, onSubmit
 
   const activeClaim = claims.find(c => c.id === selectedClaimId) || claims[0];
 
+  // Patients never see internal pipeline stage names (fraud review, claim analysis, etc.) —
+  // just "Under Review" until a human reviewer has made a final call.
   const getWorkflowBadge = (status: ClaimState) => {
-    switch (status) {
-      case 'COMPLETED':
-        return <span className="badge badge-approve">COMPLETED</span>;
-      case 'REJECTED':
-        return <span className="badge badge-reject">REJECTED</span>;
-      case 'FRAUD_REVIEW':
-        return <span className="badge badge-review">SIU FRAUD REVIEW</span>;
-      case 'ADJUSTER_REVIEW':
-        return <span className="badge badge-review">ADJUSTER REVIEW</span>;
-      default:
-        return <span className="badge badge-pending">{status.replace('_', ' ')}</span>;
-    }
+    if (status === 'COMPLETED') return <span className="badge badge-approve">APPROVED</span>;
+    if (status === 'REJECTED') return <span className="badge badge-reject">REJECTED</span>;
+    return <span className="badge badge-pending">UNDER REVIEW</span>;
   };
 
   return (
@@ -211,7 +203,7 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({ claims, onSubmit
               {claims.slice(0, 4).map(c => (
                 <div
                   key={c.id}
-                  onClick={() => { setSelectedClaimId(c.id); onSelectClaim(c); }}
+                  onClick={() => setSelectedClaimId(c.id)}
                   style={{
                     padding: '0.85rem 1rem',
                     borderRadius: '10px',
@@ -247,18 +239,37 @@ export const CustomerPortal: React.FC<CustomerPortalProps> = ({ claims, onSubmit
           </div>
         )}
 
-        {/* AI Semantic Bridge Customer Explanation */}
-        {activeClaim && activeClaim.customer_explanation && (
-          <div className="glass-panel" style={{ padding: '1.25rem', background: 'linear-gradient(135deg, rgba(99,102,241,0.12) 0%, rgba(14,165,233,0.06) 100%)', border: '1px solid var(--border-highlight)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-              <Sparkles style={{ width: '18px', height: '18px', color: 'var(--accent-cyan)' }} />
-              <h4 style={{ fontSize: '1rem', color: '#fff' }}>Semantic Bridge AI Explanation</h4>
+        {/* Final Decision Explanation — the single place patients see accepted/rejected + why.
+            Only shown once a human reviewer's decision has been finalized and communicated. */}
+        {activeClaim && (activeClaim.status === 'COMPLETED' || activeClaim.status === 'REJECTED') && (() => {
+          const comm = (activeClaim.customer_communication || {}) as Record<string, unknown>;
+          const body = (comm.body as string) || activeClaim.customer_explanation;
+          const appealGuidance = comm.appeal_guidance as string | undefined;
+          const isRejected = activeClaim.status === 'REJECTED';
+          return (
+            <div className="glass-panel" style={{ padding: '1.25rem', background: isRejected ? 'rgba(239,68,68,0.06)' : 'linear-gradient(135deg, rgba(99,102,241,0.12) 0%, rgba(14,165,233,0.06) 100%)', border: `1px solid ${isRejected ? 'rgba(239,68,68,0.25)' : 'var(--border-highlight)'}` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                <Sparkles style={{ width: '18px', height: '18px', color: isRejected ? '#f87171' : 'var(--accent-cyan)' }} />
+                <h4 style={{ fontSize: '1rem', color: '#fff' }}>
+                  {isRejected ? 'Why Your Claim Was Not Approved' : 'Your Claim Decision, Explained'}
+                </h4>
+              </div>
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-main)', lineHeight: '1.6' }}>
+                {body}
+              </p>
+              {!isRejected && activeClaim.approved_amount > 0 && (
+                <p style={{ fontSize: '0.85rem', color: '#34d399', marginTop: '0.6rem' }}>
+                  Approved payout: <strong className="text-mono">${activeClaim.approved_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
+                </p>
+              )}
+              {isRejected && appealGuidance && (
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.6rem', fontStyle: 'italic' }}>
+                  {appealGuidance}
+                </p>
+              )}
             </div>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-main)', lineHeight: '1.6' }}>
-              {activeClaim.customer_explanation}
-            </p>
-          </div>
-        )}
+          );
+        })()}
       </div>
     </div>
   );

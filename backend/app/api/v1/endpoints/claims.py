@@ -37,19 +37,25 @@ async def advance_claim(claim_id: str):
 
 
 @router.post("/{claim_id}/fraud-review", response_model=ClaimResponse, summary="Human Fraud Investigator Action")
-async def process_fraud_review(claim_id: str, action: FraudReviewAction):
+async def process_fraud_review(claim_id: str, action: FraudReviewAction, background_tasks: BackgroundTasks):
     try:
-        return await claim_service.process_fraud_review(claim_id, action)
+        claim = await claim_service.process_fraud_review(claim_id, action)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    # Remaining automated steps (e.g. CUSTOMER_COMMUNICATION, Cortex calls) run in the
+    # background so this request returns immediately instead of blocking on the LLM.
+    background_tasks.add_task(run_workflow_background, claim_id)
+    return claim
 
 
 @router.patch("/{claim_id}", response_model=ClaimResponse, summary="Human Adjuster Review Action")
-async def update_claim_adjuster(claim_id: str, update_data: ClaimUpdate):
+async def update_claim_adjuster(claim_id: str, update_data: ClaimUpdate, background_tasks: BackgroundTasks):
     try:
-        return await claim_service.update_claim_adjuster(claim_id, update_data)
+        claim = await claim_service.update_claim_adjuster(claim_id, update_data)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    background_tasks.add_task(run_workflow_background, claim_id)
+    return claim
 
 
 @router.post("/{claim_id}/resume", response_model=ClaimResponse, summary="Resume a failed workflow")

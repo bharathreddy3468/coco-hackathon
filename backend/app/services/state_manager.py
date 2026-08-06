@@ -9,7 +9,16 @@ from typing import Any, Dict, Optional
 from app.database.session import execute_query, fetch_one
 from app.workflow.context import WorkflowContext
 
+from enum import Enum
+
 logger = logging.getLogger(__name__)
+
+
+def _to_primitive(val: Any) -> Any:
+    """Convert Enum instances or non-standard types to Python primitives."""
+    if isinstance(val, Enum):
+        return val.value
+    return val
 
 
 class StateManager:
@@ -18,7 +27,7 @@ class StateManager:
     async def load_workflow_state(self, claim_id: str) -> WorkflowContext:
         """Load or initialize workflow state for a claim."""
         sql = "SELECT * FROM CLAIM_WORKFLOW WHERE claim_id = %s"
-        row = await fetch_one(sql, (claim_id,))
+        row = await fetch_one(sql, (_to_primitive(claim_id),))
 
         if row is None:
             ctx = WorkflowContext(claim_id=claim_id, current_state="SUBMITTED")
@@ -43,7 +52,7 @@ class StateManager:
         VALUES (%s, %s, 'ACTIVE', 0, %s, %s)
         """
         now = ctx.started_at.isoformat()
-        await execute_query(sql, (ctx.claim_id, ctx.current_state, now, now))
+        await execute_query(sql, (_to_primitive(ctx.claim_id), _to_primitive(ctx.current_state), now, now))
 
     async def save_workflow_state(self, ctx: WorkflowContext) -> None:
         """Persist current workflow state using MERGE."""
@@ -61,14 +70,14 @@ class StateManager:
             VALUES (%s, %s, %s, 'ACTIVE', %s, %s, %s)
         """
         params = (
-            ctx.claim_id,
-            ctx.current_state,
-            ctx.previous_state,
+            _to_primitive(ctx.claim_id),
+            _to_primitive(ctx.current_state),
+            _to_primitive(ctx.previous_state),
             ctx.retry_count,
             now,
-            ctx.claim_id,
-            ctx.current_state,
-            ctx.previous_state,
+            _to_primitive(ctx.claim_id),
+            _to_primitive(ctx.current_state),
+            _to_primitive(ctx.previous_state),
             ctx.retry_count,
             ctx.started_at.isoformat(),
             now,
@@ -86,8 +95,8 @@ class StateManager:
         logger.info("state_transition", extra={
             "claim_id": ctx.claim_id,
             "event": "state_transition",
-            "from_state": old_state,
-            "to_state": new_state,
+            "from_state": _to_primitive(old_state),
+            "to_state": _to_primitive(new_state),
             "actor": actor,
         })
 
@@ -103,7 +112,7 @@ class StateManager:
             updated_at = %s
         WHERE claim_id = %s
         """
-        await execute_query(sql, (ctx.retry_count, error_message, now, ctx.claim_id))
+        await execute_query(sql, (ctx.retry_count, error_message, now, _to_primitive(ctx.claim_id)))
         logger.warning("workflow_failure", extra={
             "claim_id": ctx.claim_id,
             "event": "workflow_failure",
@@ -127,7 +136,8 @@ class StateManager:
         INSERT INTO WORKFLOW_EVENTS (event_id, claim_id, from_state, to_state, actor, timestamp, metadata)
         SELECT %s, %s, %s, %s, %s, %s, PARSE_JSON(%s)
         """
-        await execute_query(sql, (event_id, claim_id, from_state, to_state, actor, now, meta_json))
+        await execute_query(sql, (_to_primitive(event_id), _to_primitive(claim_id), _to_primitive(from_state), _to_primitive(to_state), _to_primitive(actor), now, meta_json))
+
         logger.info("workflow_event_created", extra={
             "claim_id": claim_id,
             "event": "workflow_event_created",

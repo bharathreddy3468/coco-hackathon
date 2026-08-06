@@ -1,26 +1,30 @@
 import React, { useState } from 'react';
-import { XCircle, CheckCircle2, Play, Edit3, MessageSquare, ShieldAlert, AlertTriangle, Lock } from 'lucide-react';
-import { Claim, FraudReviewAction } from '../types/claim';
+import { XCircle, CheckCircle2, Edit3, MessageSquare, ShieldAlert, AlertTriangle, Lock, Loader2 } from 'lucide-react';
+import { Claim, ClaimState, FraudReviewAction } from '../types/claim';
 import { WorkflowVisualizer } from './WorkflowVisualizer';
 
 interface AdjusterDashboardProps {
   claims: Claim[];
-  onSelectClaim: (claim: Claim) => void;
-  onAdvanceWorkflow: (claimId: string) => Promise<void>;
   onSubmitFraudReview: (claimId: string, action: FraudReviewAction) => Promise<void>;
   onUpdateClaim: (claimId: string, updateData: { status?: string; approved_amount?: number; adjuster_notes?: string }) => Promise<void>;
 }
 
+// States the workflow engine drives on its own in the background — no human action needed.
+const AUTOMATED_STATES: ClaimState[] = ['SUBMITTED', 'DOCUMENT_INTAKE', 'PRIVACY_GUARD', 'FRAUD_DETECTION', 'CLAIM_ANALYSIS'];
+
+// Once a claim reaches these states, its decision has already been dispatched to the
+// customer — it belongs to the customer portal only and drops out of the reviewer pool.
+const CUSTOMER_ONLY_STATES: ClaimState[] = ['SEMANTIC_BRIDGE', 'CUSTOMER_COMMUNICATION', 'COMPLETED', 'REJECTED'];
+const isWithReviewer = (c: Claim) => !CUSTOMER_ONLY_STATES.includes(c.status);
+
 export const AdjusterDashboard: React.FC<AdjusterDashboardProps> = ({
   claims,
-  onSelectClaim,
-  onAdvanceWorkflow,
   onSubmitFraudReview,
   onUpdateClaim
 }) => {
   const [activeQueueTab, setActiveQueueTab] = useState<'FRAUD_REVIEW' | 'ADJUSTER_REVIEW' | 'ALL'>('FRAUD_REVIEW');
-  const [selectedClaimId, setSelectedClaimId] = useState<string | null>(claims[0]?.id || null);
-  
+  const [selectedClaimId, setSelectedClaimId] = useState<string | null>(null);
+
   // Modals state
   const [fraudModalOpen, setFraudModalOpen] = useState(false);
   const [fraudConfirmed, setFraudConfirmed] = useState(false);
@@ -30,15 +34,17 @@ export const AdjusterDashboard: React.FC<AdjusterDashboardProps> = ({
   const [adjusterActionType, setAdjusterActionType] = useState<'APPROVE' | 'MODIFY' | 'REJECT'>('APPROVE');
   const [modifiedPayout, setModifiedPayout] = useState<string>('');
   const [adjusterNotes, setAdjusterNotes] = useState<string>('');
-  
+
   const [processing, setProcessing] = useState(false);
-  const [advancing, setAdvancing] = useState(false);
 
-  const fraudQueue = claims.filter(c => c.status === 'FRAUD_REVIEW' || c.risk_score >= 0.5);
-  const adjusterQueue = claims.filter(c => c.status === 'ADJUSTER_REVIEW' || c.status === 'CLAIM_ANALYSIS');
+  // Reviewer pool = every claim still in flight (not yet dispatched to the customer).
+  // This is the shared pool both the fraud investigator and adjuster work out of.
+  const reviewerPool = claims.filter(isWithReviewer);
+  const fraudQueue = reviewerPool.filter(c => c.status === 'FRAUD_REVIEW');
+  const adjusterQueue = reviewerPool.filter(c => c.status === 'ADJUSTER_REVIEW');
 
-  const currentList = activeQueueTab === 'FRAUD_REVIEW' ? fraudQueue : (activeQueueTab === 'ADJUSTER_REVIEW' ? adjusterQueue : claims);
-  const selectedClaim = claims.find(c => c.id === selectedClaimId) || currentList[0] || claims[0];
+  const currentList = activeQueueTab === 'FRAUD_REVIEW' ? fraudQueue : (activeQueueTab === 'ADJUSTER_REVIEW' ? adjusterQueue : reviewerPool);
+  const selectedClaim = reviewerPool.find(c => c.id === selectedClaimId) || currentList[0] || reviewerPool[0];
 
   const handleOpenFraudAction = (confirmed: boolean) => {
     setFraudConfirmed(confirmed);
@@ -91,16 +97,6 @@ export const AdjusterDashboard: React.FC<AdjusterDashboardProps> = ({
     }
   };
 
-  const handleAdvanceStep = async () => {
-    if (!selectedClaim) return;
-    setAdvancing(true);
-    try {
-      await onAdvanceWorkflow(selectedClaim.id);
-    } finally {
-      setAdvancing(false);
-    }
-  };
-
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: '1.5rem' }}>
       {/* Left Queue View */}
@@ -129,8 +125,8 @@ export const AdjusterDashboard: React.FC<AdjusterDashboardProps> = ({
               onClick={() => setActiveQueueTab('ALL')}
               style={{ textAlign: 'left', padding: '0.5rem 0.75rem', borderRadius: '8px', fontSize: '0.85rem', display: 'flex', justifyContent: 'space-between' }}
             >
-              <span>All Claims Database</span>
-              <strong className="text-mono">{claims.length}</strong>
+              <span>Reviewer Pool (Active)</span>
+              <strong className="text-mono">{reviewerPool.length}</strong>
             </button>
           </div>
         </div>
@@ -141,7 +137,7 @@ export const AdjusterDashboard: React.FC<AdjusterDashboardProps> = ({
             return (
               <div
                 key={claim.id}
-                onClick={() => { setSelectedClaimId(claim.id); onSelectClaim(claim); }}
+                onClick={() => setSelectedClaimId(claim.id)}
                 style={{
                   padding: '0.85rem',
                   borderRadius: '10px',
@@ -204,9 +200,12 @@ export const AdjusterDashboard: React.FC<AdjusterDashboardProps> = ({
                 </button>
               </div>
             ) : (
-              <button onClick={handleAdvanceStep} disabled={advancing} className="btn-primary" style={{ fontSize: '0.85rem' }}>
-                <Play style={{ width: '14px', height: '14px' }} /> {advancing ? 'Advancing Workflow...' : 'Advance Workflow Engine Step'}
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                <Loader2 className="spin" style={{ width: '16px', height: '16px' }} />
+                {AUTOMATED_STATES.includes(selectedClaim.status)
+                  ? 'AI Copilot is processing this claim automatically...'
+                  : 'Awaiting customer dispatch...'}
+              </div>
             )}
           </div>
 
@@ -241,7 +240,9 @@ export const AdjusterDashboard: React.FC<AdjusterDashboardProps> = ({
         </div>
       ) : (
         <div className="glass-panel" style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-dim)' }}>
-          Select a claim from the queue to inspect.
+          {reviewerPool.length === 0
+            ? 'No claims currently need review — everything in the pool has been dispatched to customers.'
+            : 'Select a claim from the queue to inspect.'}
         </div>
       )}
 

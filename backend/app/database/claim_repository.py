@@ -18,9 +18,28 @@ _JSON_COLUMNS = [
 ]
 
 
+from enum import Enum
+
+
+def _to_primitive(val: Any) -> Any:
+    """Convert Enum instances or non-standard types to Python primitives."""
+    if isinstance(val, Enum):
+        return val.value
+    return val
+
+
+def _json_default(obj: Any) -> Any:
+    """JSON serializer fallback for Enum instances and custom objects."""
+    if isinstance(obj, Enum):
+        return obj.value
+    if hasattr(obj, "isoformat"):
+        return obj.isoformat()
+    return str(obj)
+
+
 def _serialize_json(value: Any) -> str:
     """Serialize a Python value to a JSON string for Snowflake VARIANT."""
-    return json.dumps(value) if value is not None else "null"
+    return json.dumps(value, default=_json_default) if value is not None else "null"
 
 
 def _deserialize_json(value: Any) -> Any:
@@ -63,7 +82,6 @@ def _row_to_workflow_event(row: Dict[str, Any]) -> WorkflowEventModel:
     return WorkflowEventModel(**data)
 
 
-
 class ClaimRepository:
     """Async data access layer for CLAIMS, CLAIM_WORKFLOW, and WORKFLOW_EVENTS tables."""
 
@@ -84,16 +102,16 @@ class ClaimRepository:
             PARSE_JSON(%s), PARSE_JSON(%s), %s, %s
         """
         params = (
-            model.id,
-            model.claim_number,
-            model.policy_number,
-            model.claimant_name,
-            model.claim_type,
+            _to_primitive(model.id),
+            _to_primitive(model.claim_number),
+            _to_primitive(model.policy_number),
+            _to_primitive(model.claimant_name),
+            _to_primitive(model.claim_type),
             model.claimed_amount,
             model.approved_amount,
-            model.status,
+            _to_primitive(model.status),
             model.risk_score,
-            model.copilot_recommendation,
+            _to_primitive(model.copilot_recommendation),
             model.incident_description,
             model.redacted_description,
             _serialize_json(model.privacy_flags),
@@ -135,7 +153,7 @@ class ClaimRepository:
                 params.append(_serialize_json(value))
             else:
                 set_clauses.append(f"{key} = %s")
-                params.append(value)
+                params.append(_to_primitive(value))
 
         params.append(claim_id)
         sql = f"UPDATE CLAIMS SET {', '.join(set_clauses)} WHERE id = %s"
@@ -149,17 +167,18 @@ class ClaimRepository:
         SELECT %s, %s, %s, %s, %s, %s, %s, PARSE_JSON(%s)
         """
         params = (
-            event.event_id,
-            event.claim_id,
-            event.event_type,
-            event.from_state,
-            event.to_state,
-            event.actor,
+            _to_primitive(event.event_id),
+            _to_primitive(event.claim_id),
+            _to_primitive(event.event_type),
+            _to_primitive(event.from_state),
+            _to_primitive(event.to_state),
+            _to_primitive(event.actor),
             event.timestamp.isoformat(),
             _serialize_json(event.metadata),
         )
         await execute_query(sql, params)
         return event
+
 
     async def create_audit_log(self, model: AuditLogModel) -> AuditLogModel:
         """Backward-compatible audit log recorder, maps directly into WORKFLOW_EVENTS table."""

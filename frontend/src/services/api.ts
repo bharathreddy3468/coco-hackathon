@@ -38,14 +38,6 @@ export const api = {
     return res.json();
   },
 
-  async advanceWorkflow(claimId: string): Promise<Claim> {
-    const res = await fetch(`${API_BASE}/claims/${claimId}/advance`, {
-      method: 'POST',
-    });
-    if (!res.ok) throw new Error('Failed to advance workflow');
-    return res.json();
-  },
-
   async submitFraudReview(claimId: string, action: FraudReviewAction): Promise<Claim> {
     const res = await fetch(`${API_BASE}/claims/${claimId}/fraud-review`, {
       method: 'POST',
