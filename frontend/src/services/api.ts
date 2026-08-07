@@ -1,6 +1,6 @@
 import { Claim, ClaimUpdate, FraudReviewAction, SkillMeta, SkillExecutionResult, SystemHealth, SystemReadiness, ClaimDocument } from '../types/claim';
 
-const API_BASE = '${import.meta.env.VITE_API_URL}/api/v1';
+const API_BASE = `${import.meta.env.VITE_API_URL}/api/v1`;
 
 export const api = {
   async getHealth(): Promise<SystemHealth> {
